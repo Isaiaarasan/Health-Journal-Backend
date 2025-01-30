@@ -8,9 +8,10 @@ require('dotenv').config();
 const app = express();
 
 app.use(cors({
-    origin: 'http://localhost:3000', 
+    origin: ['http://localhost:5176', 'http://localhost:5173', 'http://localhost:3000', 'https://health-journal-project-3.vercel.app'],
     credentials: true
 }));
+
 app.use(express.json());
 
 mongoose.connect('mongodb+srv://arasan:17652000@health-journal.xxwey.mongodb.net/healthjournal', {
