@@ -1,18 +1,15 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const User = require('./models/User');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 require('dotenv').config();
 
 const app = express();
 
-app.use(cors({
-    origin: ['http://localhost:5176', 'http://localhost:5173', 'http://localhost:3000', 'https://health-journal-project-3.vercel.app'],
-    credentials: true
-}));
+app.use(cors());
 
-app.use(express.json());
+app.use(express.json()); 
 
 mongoose.connect('mongodb+srv://arasan:17652000@health-journal.xxwey.mongodb.net/healthjournal', {
     dbName: 'healthjournal'
@@ -20,14 +17,24 @@ mongoose.connect('mongodb+srv://arasan:17652000@health-journal.xxwey.mongodb.net
 .then(() => console.log('Connected to MongoDB Atlas'))
 .catch(err => console.error('MongoDB connection error:', err));
 
-app.get('/', (req, res) => {
-    res.send('Health Journal API is running');
+const userSchema = new mongoose.Schema({
+    email: { type: String, required: true, unique: true, trim: true, lowercase: true },
+    password: { type: String, required: true }
 });
+
+userSchema.pre('save', async function(next) {
+    if (this.isModified('password')) {
+        this.password = await bcrypt.hash(this.password, 10);
+    }
+    next();
+});
+
+const User = mongoose.model('User', userSchema);
 
 app.post('/api/signup', async (req, res) => {
     try {
         const { email, password } = req.body;
-        
+
         const existingUser = await User.findOne({ email });
         if (existingUser) {
             return res.status(400).json({ message: 'User already exists' });
@@ -38,32 +45,33 @@ app.post('/api/signup', async (req, res) => {
 
         res.status(201).json({ message: 'User created successfully' });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error('Signup Error:', error);
+        res.status(500).json({ message: 'Signup failed', error: error.message });
     }
 });
 
 app.post('/api/login', async (req, res) => {
     try {
         const { email, password } = req.body;
-        
+
         const user = await User.findOne({ email });
         if (!user) {
-            return res.status(401).json({ message: 'Invalid email address' });
+            return res.status(400).json({ message: 'Invalid email or password' });
         }
 
-        const isMatch = await user.comparePassword(password);
+        const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
-            return res.status(401).json({ message: 'Invalid password' });
+            return res.status(400).json({ message: 'Invalid email or password' });
         }
 
-        const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET || 'your_jwt_secret', { expiresIn: '1h' });
+        const token = jwt.sign({ userId: user._id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
-        res.json({ token, userId: user._id });
+        res.status(200).json({ message: 'Login successful', token, userId: user._id });
     } catch (error) {
-        res.status(500).json({ message: 'Login failed. Please try again.' });
+        console.error('Login Error:', error);
+        res.status(500).json({ message: 'Login failed', error: error.message });
     }
 });
-
 const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
